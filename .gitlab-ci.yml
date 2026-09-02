@@ -63,7 +63,7 @@ variables:
 cargo-fmt:
   extends: .only-mr
   stage: check
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   variables:
     RUSTFLAGS: "-D warnings"
@@ -74,7 +74,7 @@ cargo-fmt:
 cargo-clippy:
   extends: .only-mr
   stage: check
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   variables:
     RUSTFLAGS: "-D warnings"
@@ -85,7 +85,7 @@ cargo-clippy:
 cargo-audit:
   extends: .only-mr
   stage: check
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   before_script:
     - export PATH="${CI_PROJECT_DIR}/.cargo/bin:$PATH"
@@ -101,7 +101,7 @@ cargo-audit:
 unit-tests:
   extends: .only-mr
   stage: test
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   needs:
     - cargo-clippy
@@ -113,7 +113,7 @@ unit-tests:
 doc-tests:
   extends: .only-mr
   stage: test
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   needs:
     - cargo-clippy
@@ -122,13 +122,32 @@ doc-tests:
   script:
     - cargo test --workspace --doc
 
+coverage:
+  extends: .only-mr
+  stage: test
+  image: rust:1.91.0
+  <<: *rust-cache
+  needs:
+    - cargo-clippy
+  before_script:
+    - export PATH="${CI_PROJECT_DIR}/.cargo/bin:$PATH"
+  script:
+    - cargo install cargo-tarpaulin --locked
+    - cargo tarpaulin --workspace --exclude mailcraft-derive --ignore-tests --out xml --output-dir coverage/
+  coverage: '/(\d+\.\d+)% coverage/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura.xml
+
 # ---------------------------------------------------------------------------
 # BUILD
 # ---------------------------------------------------------------------------
 
 build-release:
   stage: build
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   script:
     - cargo build --workspace --release
@@ -141,7 +160,7 @@ build-release:
 
 release-plz-update:
   stage: release
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   needs:
     - build-release
@@ -175,7 +194,7 @@ release-plz-update:
 
 release-plz-release:
   stage: release
-  image: rust:1.87.0
+  image: rust:1.91.0
   <<: *rust-cache
   needs:
     - job: build-release

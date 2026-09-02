@@ -317,4 +317,158 @@ mod tests {
             .unwrap();
         assert_eq!(result, "T");
     }
+
+    fn build_with_event(slug: &str, subject: &str, html: &str, txt: &str) -> TemplateEngine {
+        let mut hb = Handlebars::new();
+        hb.register_helper("default", Box::new(helpers::DefaultHelper));
+        hb.register_template_string(&format!("{slug}/subject"), subject)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/body.html"), html)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/body.txt"), txt)
+            .unwrap();
+
+        let mut text_hb = hb.clone();
+        text_hb.register_escape_fn(handlebars::no_escape);
+
+        TemplateEngine {
+            html_handlebars: Arc::new(hb),
+            text_handlebars: Arc::new(text_hb),
+        }
+    }
+
+    #[test]
+    fn render_event_renders_all_parts() {
+        let engine = build_with_event(
+            "welcome",
+            "Hi {{name}}",
+            "<h1>Hello {{name}}</h1>",
+            "Hello {{name}}",
+        );
+        let rendered = engine
+            .render_event("welcome", &json!({"name": "Alice"}))
+            .unwrap();
+        assert_eq!(rendered.subject, "Hi Alice");
+        assert_eq!(rendered.html, "<h1>Hello Alice</h1>");
+        assert_eq!(rendered.text, "Hello Alice");
+    }
+
+    #[test]
+    fn render_event_trims_subject_whitespace() {
+        let engine = build_with_event("ev", "  Hello {{name}}  \n", "<p>X</p>", "X");
+        let rendered = engine.render_event("ev", &json!({"name": "Bob"})).unwrap();
+        assert_eq!(rendered.subject, "Hello Bob");
+    }
+
+    #[test]
+    fn render_event_missing_subject_template() {
+        let engine = build_with_template("ev/body.html", "<p>X</p>");
+        let result = engine.render_event("ev", &json!({}));
+        assert!(matches!(result, Err(TemplateError::NotFound(ref s)) if s == "ev/subject"));
+    }
+
+    #[test]
+    fn render_event_missing_html_template() {
+        let hb = Handlebars::new();
+
+        let mut text_hb = Handlebars::new();
+        text_hb.register_escape_fn(handlebars::no_escape);
+        text_hb
+            .register_template_string("ev/subject", "Sub")
+            .unwrap();
+        text_hb
+            .register_template_string("ev/body.txt", "Text")
+            .unwrap();
+
+        let engine = TemplateEngine {
+            html_handlebars: Arc::new(hb),
+            text_handlebars: Arc::new(text_hb),
+        };
+        let result = engine.render_event("ev", &json!({}));
+        assert!(matches!(result, Err(TemplateError::NotFound(ref s)) if s == "ev/body.html"));
+    }
+
+    #[test]
+    fn render_event_missing_txt_template() {
+        let mut hb = Handlebars::new();
+        hb.register_template_string("ev/body.html", "<p>Html</p>")
+            .unwrap();
+
+        let mut text_hb = Handlebars::new();
+        text_hb.register_escape_fn(handlebars::no_escape);
+        text_hb
+            .register_template_string("ev/subject", "Sub")
+            .unwrap();
+
+        let engine = TemplateEngine {
+            html_handlebars: Arc::new(hb),
+            text_handlebars: Arc::new(text_hb),
+        };
+        let result = engine.render_event("ev", &json!({}));
+        assert!(matches!(result, Err(TemplateError::NotFound(ref s)) if s == "ev/body.txt"));
+    }
+
+    #[test]
+    fn strict_mode_rejects_missing_variable() {
+        let engine = TemplateEngine::builder()
+            .register_partial("test", "Hello {{name}}")
+            .unwrap()
+            .build()
+            .unwrap();
+        let result = engine.render("test", &json!({}));
+        assert!(matches!(result, Err(TemplateError::Render(_))));
+    }
+
+    #[test]
+    fn lenient_mode_allows_missing_variable() {
+        let engine = TemplateEngine::builder()
+            .register_partial("test", "Hello {{name}}")
+            .unwrap()
+            .lenient()
+            .build()
+            .unwrap();
+        let result = engine.render("test", &json!({})).unwrap();
+        assert_eq!(result, "Hello ");
+    }
+
+    #[test]
+    fn render_method_uses_html_escaping() {
+        let engine = build_with_template("test", "<p>{{content}}</p>");
+        let result = engine
+            .render("test", &json!({"content": "<b>bold</b>"}))
+            .unwrap();
+        assert!(result.contains("&lt;b&gt;"));
+        assert!(!result.contains("<b>bold</b>"));
+    }
+
+    #[test]
+    fn render_event_html_escapes_text_does_not() {
+        let engine = build_with_event("ev", "{{title}}", "<p>{{content}}</p>", "{{content}}");
+        let data = json!({"title": "A & B", "content": "<script>alert(1)</script>"});
+        let rendered = engine.render_event("ev", &data).unwrap();
+
+        assert_eq!(rendered.subject, "A & B");
+        assert!(rendered.html.contains("&lt;script&gt;"));
+        assert!(rendered.text.contains("<script>alert(1)</script>"));
+    }
+
+    #[test]
+    fn partial_used_inside_template() {
+        let engine = TemplateEngine::builder()
+            .register_partial("header", "<h1>{{title}}</h1>")
+            .unwrap()
+            .register_partial("page", "{{> header}}<p>body</p>")
+            .unwrap()
+            .lenient()
+            .build()
+            .unwrap();
+        let result = engine.render("page", &json!({"title": "Hi"})).unwrap();
+        assert_eq!(result, "<h1>Hi</h1><p>body</p>");
+    }
+
+    #[test]
+    fn register_invalid_template_returns_error() {
+        let result = TemplateEngine::builder().register_partial("bad", "{{#if}}");
+        assert!(result.is_err());
+    }
 }

@@ -88,4 +88,19 @@ mod tests {
         let hash_part = local_part.split('+').nth(1).unwrap();
         assert!(hash_part.len() >= 8);
     }
+
+    #[test]
+    fn redirect_staging_with_existing_plus_tag() {
+        let result = redirect_email_for_staging("alice@example.com", "dev+old@myapp.com");
+        assert!(result.starts_with("dev+old+"));
+        assert!(result.ends_with("@myapp.com"));
+    }
+
+    #[test]
+    fn redirect_hash_is_valid_hex() {
+        let result = redirect_email_for_staging("alice@example.com", "staging@myapp.com");
+        let local = result.split('@').next().unwrap();
+        let hash = local.split('+').nth(1).unwrap();
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }
