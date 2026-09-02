@@ -1,0 +1,3 @@
+[workspace]
+members = ["mailcraft", "mailcraft-derive"]
+resolver = "2"

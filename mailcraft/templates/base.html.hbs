@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>{{default app_name "Email"}}</title>
+
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+
+  <style>
+    /* Reset */
+    body, table, td, p, a, li, blockquote {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    table, td {
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+    }
+
+    /* Base */
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      background-color: #F5F5F5;
+    }
+
+    /* Dark mode */
+    @media (prefers-color-scheme: dark) {
+      body { background-color: #1A1A1A !important; }
+      .mc-body { background-color: #1A1A1A !important; }
+      .mc-card { background-color: #2D2D2D !important; }
+      .mc-title { color: #F5F5F5 !important; }
+      .mc-text { color: #CCCCCC !important; }
+      .mc-muted { color: #999999 !important; }
+      .mc-divider { border-color: #444444 !important; }
+      .mc-link { color: #5BA3D9 !important; }
+    }
+
+    /* Responsive */
+    @media screen and (max-width: 600px) {
+      .mc-container { width: 100% !important; max-width: 100% !important; }
+      .mc-padding { padding-left: 20px !important; padding-right: 20px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F5F5F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="mc-body" style="background-color: #F5F5F5;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+
+        <!-- Main container -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="mc-container" style="max-width: 600px; width: 100%;">
+
+          <!-- Card -->
+          <tr>
+            <td class="mc-card" style="background-color: #FFFFFF; border-radius: 8px;">
+
+              <!-- Content area -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="mc-padding" style="padding: 32px;">
+                    {{> @partial-block}}
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Footer divider -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding: 0 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td class="mc-divider" style="border-top: 1px solid #EEEEEE; font-size: 1px; line-height: 1px;">&nbsp;</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Footer -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding: 24px 32px 32px 32px;">
+                    {{#if footer_text}}
+                    <p class="mc-muted" style="margin: 0; font-size: 12px; color: #888888; line-height: 1.5;">
+                      {{{footer_text}}}
+                    </p>
+                    {{/if}}
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

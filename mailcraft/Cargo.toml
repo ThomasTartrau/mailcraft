@@ -1,0 +1,21 @@
+[package]
+name = "mailcraft"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Compile-time email template engine for Rust. Type-safe Handlebars templates verified at build time."
+repository = "https://gitlab.com/thomastartrau/mailcraft"
+keywords = ["email", "template", "handlebars", "compile-time", "transactional"]
+categories = ["email", "template-engine"]
+
+[dependencies]
+mailcraft-derive = { path = "../mailcraft-derive", version = "0.1.0" }
+handlebars = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sha2 = "0.10"
+
+[[example]]
+name = "simple"
+path = "../examples/simple.rs"

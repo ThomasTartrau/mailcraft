@@ -1,0 +1,18 @@
+[package]
+name = "mailcraft-derive"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Derive macro for mailcraft compile-time email template registry"
+repository = "https://gitlab.com/thomastartrau/mailcraft"
+keywords = ["email", "template", "derive", "compile-time"]
+categories = ["email", "template-engine"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+heck = "0.5"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
