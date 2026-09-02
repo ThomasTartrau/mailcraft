@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Derive macro for mailcraft compile-time email template registry"
+readme = "../README.md"
 repository = "https://gitlab.com/thomastartrau/mailcraft"
 keywords = ["email", "template", "derive", "compile-time"]
 categories = ["email", "template-engine"]

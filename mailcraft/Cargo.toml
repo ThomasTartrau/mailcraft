@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Compile-time email template engine for Rust. Type-safe Handlebars templates verified at build time."
+readme = "../README.md"
 repository = "https://gitlab.com/thomastartrau/mailcraft"
 keywords = ["email", "template", "handlebars", "compile-time", "transactional"]
 categories = ["email", "template-engine"]
