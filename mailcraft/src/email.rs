@@ -201,4 +201,87 @@ mod tests {
         assert_eq!(email.attachments.len(), 1);
         assert_eq!(email.attachments[0].filename, "invoice.pdf");
     }
+
+    #[test]
+    fn build_email_missing_from() {
+        let result = Email::builder()
+            .to("a@b.com")
+            .subject("Test")
+            .html_body("<p>Hello</p>")
+            .text_body("Hello")
+            .build();
+        assert!(matches!(result, Err(EmailBuildError::MissingFrom)));
+    }
+
+    #[test]
+    fn build_email_missing_subject() {
+        let result = Email::builder()
+            .to("a@b.com")
+            .from(EmailAddress::new("sender@b.com"))
+            .html_body("<p>Hello</p>")
+            .text_body("Hello")
+            .build();
+        assert!(matches!(result, Err(EmailBuildError::MissingSubject)));
+    }
+
+    #[test]
+    fn build_email_missing_html_body() {
+        let result = Email::builder()
+            .to("a@b.com")
+            .from(EmailAddress::new("sender@b.com"))
+            .subject("Test")
+            .text_body("Hello")
+            .build();
+        assert!(matches!(result, Err(EmailBuildError::MissingHtmlBody)));
+    }
+
+    #[test]
+    fn build_email_missing_text_body() {
+        let result = Email::builder()
+            .to("a@b.com")
+            .from(EmailAddress::new("sender@b.com"))
+            .subject("Test")
+            .html_body("<p>Hello</p>")
+            .build();
+        assert!(matches!(result, Err(EmailBuildError::MissingTextBody)));
+    }
+
+    #[test]
+    fn build_email_multiple_recipients() {
+        let email = Email::builder()
+            .to("a@b.com")
+            .to("c@d.com")
+            .to("e@f.com")
+            .from(EmailAddress::new("sender@b.com"))
+            .subject("Test")
+            .html_body("<p>Hello</p>")
+            .text_body("Hello")
+            .build()
+            .unwrap();
+        assert_eq!(email.to, vec!["a@b.com", "c@d.com", "e@f.com"]);
+    }
+
+    #[test]
+    fn build_email_with_reply_to() {
+        let email = Email::builder()
+            .to("a@b.com")
+            .from(EmailAddress::new("sender@b.com"))
+            .reply_to(EmailAddress::with_name("Support", "support@b.com"))
+            .subject("Test")
+            .html_body("<p>Hello</p>")
+            .text_body("Hello")
+            .build()
+            .unwrap();
+        let reply = email.reply_to.unwrap();
+        assert_eq!(reply.email, "support@b.com");
+        assert_eq!(reply.name.unwrap(), "Support");
+    }
+
+    #[test]
+    fn attachment_custom_content_type() {
+        let att = Attachment::new("image.png", "image/png", vec![0x89, 0x50]);
+        assert_eq!(att.filename, "image.png");
+        assert_eq!(att.content_type, "image/png");
+        assert_eq!(att.data, vec![0x89, 0x50]);
+    }
 }

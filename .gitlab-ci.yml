@@ -122,6 +122,25 @@ doc-tests:
   script:
     - cargo test --workspace --doc
 
+coverage:
+  extends: .only-mr
+  stage: test
+  image: rust:1.87.0
+  <<: *rust-cache
+  needs:
+    - cargo-clippy
+  before_script:
+    - export PATH="${CI_PROJECT_DIR}/.cargo/bin:$PATH"
+  script:
+    - cargo install cargo-tarpaulin --locked
+    - cargo tarpaulin --workspace --exclude mailcraft-derive --ignore-tests --out xml --output-dir coverage/
+  coverage: '/(\d+\.\d+)% coverage/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura.xml
+
 # ---------------------------------------------------------------------------
 # BUILD
 # ---------------------------------------------------------------------------
