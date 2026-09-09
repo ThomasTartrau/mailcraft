@@ -1,7 +1,7 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
+use syn::{Data, DeriveInput, Expr, ExprArray, ExprLit, Fields, Lit, LitStr, parse_macro_input};
 
 /// Derive macro for email template enums.
 ///
@@ -18,6 +18,12 @@ use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
 /// - `register_all(handlebars: &mut mailcraft::handlebars::Handlebars<'_>) -> Result<(), mailcraft::handlebars::TemplateError>`
 ///   which inlines `include_str!` calls for every `templates/<slug>/{subject,body.html,body.txt}.hbs`,
 ///   so a missing file fails the build.
+///
+/// # Localization
+///
+/// Add `#[email_template(locales = ["fr", "en"], default_locale = "fr")]` on the enum
+/// to enable i18n. Templates are then expected at `templates/<slug>/<locale>/` and
+/// the macro generates `locales()` and `default_locale()` methods.
 #[proc_macro_derive(EmailTemplate, attributes(email_template))]
 pub fn derive_email_template(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -28,6 +34,64 @@ pub fn derive_email_template(input: TokenStream) -> TokenStream {
             .to_compile_error()
             .into();
     };
+
+    let mut locales: Option<Vec<String>> = None;
+    let mut default_locale: Option<String> = None;
+
+    for attr in &input.attrs {
+        if !attr.path().is_ident("email_template") {
+            continue;
+        }
+        let parse_result = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("locales") {
+                let value = meta.value()?;
+                let array: ExprArray = value.parse()?;
+                let mut parsed_locales = Vec::new();
+                for elem in &array.elems {
+                    if let Expr::Lit(ExprLit {
+                        lit: Lit::Str(s), ..
+                    }) = elem
+                    {
+                        parsed_locales.push(s.value());
+                    } else {
+                        return Err(meta.error("locales must be string literals"));
+                    }
+                }
+                locales = Some(parsed_locales);
+            } else if meta.path.is_ident("default_locale") {
+                let lit: LitStr = meta.value()?.parse()?;
+                default_locale = Some(lit.value());
+            } else {
+                return Err(
+                    meta.error("unknown enum attribute, expected `locales` or `default_locale`")
+                );
+            }
+            Ok(())
+        });
+        if let Err(err) = parse_result {
+            return err.to_compile_error().into();
+        }
+    }
+
+    if locales.is_some() && default_locale.is_none() {
+        return syn::Error::new_spanned(
+            name,
+            "`default_locale` is required when `locales` is specified",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    if let (Some(locs), Some(def)) = (&locales, &default_locale)
+        && !locs.contains(def)
+    {
+        return syn::Error::new_spanned(
+            name,
+            format!("`default_locale` \"{}\" is not in the `locales` list", def),
+        )
+        .to_compile_error()
+        .into();
+    }
 
     let mut slug_arms = Vec::new();
     let mut kind_arms = Vec::new();
@@ -78,12 +142,33 @@ pub fn derive_email_template(input: TokenStream) -> TokenStream {
         }
 
         let slug = slug_override.unwrap_or_else(|| variant_ident.to_string().to_snake_case());
-        let subject_key = format!("{slug}/subject");
-        let html_key = format!("{slug}/body.html");
-        let txt_key = format!("{slug}/body.txt");
-        let subject_path = format!("templates/{slug}/subject.hbs");
-        let html_path = format!("templates/{slug}/body.html.hbs");
-        let txt_path = format!("templates/{slug}/body.txt.hbs");
+
+        let emit_register = |key_prefix: &str, path_prefix: &str| {
+            let subject_key = format!("{key_prefix}/subject");
+            let html_key = format!("{key_prefix}/body.html");
+            let txt_key = format!("{key_prefix}/body.txt");
+            let subject_path = format!("{path_prefix}/subject.hbs");
+            let html_path = format!("{path_prefix}/body.html.hbs");
+            let txt_path = format!("{path_prefix}/body.txt.hbs");
+            quote! {
+                handlebars.register_template_string(#subject_key, include_str!(#subject_path))?;
+                handlebars.register_template_string(#html_key, include_str!(#html_path))?;
+                handlebars.register_template_string(#txt_key, include_str!(#txt_path))?;
+            }
+        };
+
+        if let Some(ref locs) = locales {
+            let default_loc = default_locale.as_ref().unwrap();
+            for locale in locs {
+                let tpl_dir = format!("templates/{slug}/{locale}");
+                register_stmts.push(emit_register(&format!("{slug}/{locale}"), &tpl_dir));
+                if locale == default_loc {
+                    register_stmts.push(emit_register(&slug, &tpl_dir));
+                }
+            }
+        } else {
+            register_stmts.push(emit_register(&slug, &format!("templates/{slug}")));
+        }
 
         slug_arms.push(quote! { Self::#variant_ident => #slug });
         if is_campaign {
@@ -91,11 +176,6 @@ pub fn derive_email_template(input: TokenStream) -> TokenStream {
                 .push(quote! { Self::#variant_ident => mailcraft::EmailTemplateKind::Campaign });
         }
         all_idents.push(quote! { Self::#variant_ident });
-        register_stmts.push(quote! {
-            handlebars.register_template_string(#subject_key, include_str!(#subject_path))?;
-            handlebars.register_template_string(#html_key, include_str!(#html_path))?;
-            handlebars.register_template_string(#txt_key, include_str!(#txt_path))?;
-        });
     }
 
     let kind_match_body = if kind_arms.is_empty() {
@@ -107,6 +187,22 @@ pub fn derive_email_template(input: TokenStream) -> TokenStream {
                 _ => mailcraft::EmailTemplateKind::Event,
             }
         }
+    };
+
+    let locale_methods = if let Some(ref locs) = locales {
+        let default_loc = default_locale.as_ref().unwrap();
+        let locale_strs: Vec<&str> = locs.iter().map(|s| s.as_str()).collect();
+        quote! {
+            pub const fn locales() -> &'static [&'static str] {
+                &[ #(#locale_strs),* ]
+            }
+
+            pub const fn default_locale() -> &'static str {
+                #default_loc
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let expanded = quote! {
@@ -124,6 +220,8 @@ pub fn derive_email_template(input: TokenStream) -> TokenStream {
             pub const fn all() -> &'static [Self] {
                 &[ #(#all_idents),* ]
             }
+
+            #locale_methods
 
             pub fn register_all(
                 handlebars: &mut mailcraft::handlebars::Handlebars<'_>,
