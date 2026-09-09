@@ -71,9 +71,37 @@ impl TemplateEngine {
         event_name: &str,
         data: &T,
     ) -> Result<RenderedEmail, TemplateError> {
-        let subject = self.render_text(&format!("{event_name}/subject"), data)?;
-        let html = self.render_html(&format!("{event_name}/body.html"), data)?;
-        let text = self.render_text(&format!("{event_name}/body.txt"), data)?;
+        self.render_event_localized(event_name, "", data)
+    }
+
+    /// Renders a localized event's subject, HTML body, and text body.
+    ///
+    /// Tries `{event_name}/{locale}/subject`, `{event_name}/{locale}/body.html`,
+    /// and `{event_name}/{locale}/body.txt` first. If the locale-specific template
+    /// is not registered, falls back to `{event_name}/subject` etc. (typically the
+    /// default locale's templates).
+    pub fn render_event_localized<T: Serialize>(
+        &self,
+        event_name: &str,
+        locale: &str,
+        data: &T,
+    ) -> Result<RenderedEmail, TemplateError> {
+        let resolve = |part: &str, hb: &Handlebars<'_>| -> String {
+            let localized = format!("{event_name}/{locale}/{part}");
+            if hb.has_template(&localized) {
+                localized
+            } else {
+                format!("{event_name}/{part}")
+            }
+        };
+
+        let subject_key = resolve("subject", &self.text_handlebars);
+        let html_key = resolve("body.html", &self.html_handlebars);
+        let txt_key = resolve("body.txt", &self.text_handlebars);
+
+        let subject = self.render_text(&subject_key, data)?;
+        let html = self.render_html(&html_key, data)?;
+        let text = self.render_text(&txt_key, data)?;
 
         Ok(RenderedEmail {
             subject: subject.trim().to_string(),
@@ -470,5 +498,70 @@ mod tests {
     fn register_invalid_template_returns_error() {
         let result = TemplateEngine::builder().register_partial("bad", "{{#if}}");
         assert!(result.is_err());
+    }
+
+    fn build_with_localized_event(
+        slug: &str,
+        locale: &str,
+        subject: &str,
+        html: &str,
+        txt: &str,
+    ) -> TemplateEngine {
+        let mut hb = Handlebars::new();
+        hb.register_helper("default", Box::new(helpers::DefaultHelper));
+        hb.register_template_string(&format!("{slug}/{locale}/subject"), subject)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/{locale}/body.html"), html)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/{locale}/body.txt"), txt)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/subject"), subject)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/body.html"), html)
+            .unwrap();
+        hb.register_template_string(&format!("{slug}/body.txt"), txt)
+            .unwrap();
+
+        let mut text_hb = hb.clone();
+        text_hb.register_escape_fn(handlebars::no_escape);
+
+        TemplateEngine {
+            html_handlebars: Arc::new(hb),
+            text_handlebars: Arc::new(text_hb),
+        }
+    }
+
+    #[test]
+    fn render_event_localized_html_escapes() {
+        let engine = build_with_localized_event(
+            "ev",
+            "fr",
+            "{{title}}",
+            "<p>{{content}}</p>",
+            "{{content}}",
+        );
+        let data = json!({"title": "A & B", "content": "<script>alert(1)</script>"});
+        let rendered = engine.render_event_localized("ev", "fr", &data).unwrap();
+
+        assert_eq!(rendered.subject, "A & B");
+        assert!(rendered.html.contains("&lt;script&gt;"));
+        assert!(rendered.text.contains("<script>alert(1)</script>"));
+    }
+
+    #[test]
+    fn render_event_localized_falls_back() {
+        let engine = build_with_localized_event(
+            "welcome",
+            "fr",
+            "Bonjour {{name}}",
+            "<h1>Bonjour {{name}}</h1>",
+            "Bonjour {{name}}",
+        );
+        let rendered = engine
+            .render_event_localized("welcome", "de", &json!({"name": "Alice"}))
+            .unwrap();
+        assert_eq!(rendered.subject, "Bonjour Alice");
+        assert_eq!(rendered.html, "<h1>Bonjour Alice</h1>");
+        assert_eq!(rendered.text, "Bonjour Alice");
     }
 }
