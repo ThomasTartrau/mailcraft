@@ -9,6 +9,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 stages:
+  - build-images
   - check
   - test
   - build
@@ -25,21 +26,38 @@ default:
 
 variables:
   CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
-  GIT_DEPTH: 0
-  GIT_STRATEGY: clone
+  GIT_DEPTH: 20
   RELEASE_PLZ_VERSION: "0.3.160"
   CARGO_HTTP_TIMEOUT: "180"
   CARGO_NET_RETRY: "5"
+  FF_USE_FASTZIP: "1"
+  CACHE_COMPRESSION_LEVEL: "fastest"
+  CI_RUST_IMAGE: "${CI_REGISTRY_IMAGE}/ci-rust:rust-1.91.0"
+  RUSTC_WRAPPER: sccache
+  SCCACHE_DIR: "${CI_PROJECT_DIR}/.sccache"
+  SCCACHE_CACHE_SIZE: "1G"
 
-.rust-cache: &rust-cache
+.rust-cache-debug: &rust-cache-debug
   cache:
-    key: rust-${CI_COMMIT_REF_SLUG}
+    key: rust-debug-${CI_COMMIT_REF_SLUG}
     fallback_keys:
-      - rust-${CI_DEFAULT_BRANCH}
+      - rust-debug-${CI_DEFAULT_BRANCH}
     paths:
       - .cargo/registry/cache/
       - .cargo/registry/index/
       - .cargo/git/db/
+      - .sccache/
+
+.rust-cache-release: &rust-cache-release
+  cache:
+    key: rust-release-${CI_COMMIT_REF_SLUG}
+    fallback_keys:
+      - rust-release-${CI_DEFAULT_BRANCH}
+    paths:
+      - .cargo/registry/cache/
+      - .cargo/registry/index/
+      - .cargo/git/db/
+      - .sccache/
 
 .install-release-plz: &install-release-plz
   - mkdir -p "${CI_PROJECT_DIR}/.cargo/bin"
@@ -57,40 +75,57 @@ variables:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # ---------------------------------------------------------------------------
+# BUILD IMAGES
+# ---------------------------------------------------------------------------
+
+build-ci-images:
+  stage: build-images
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64)\"}}}" > /kaniko/.docker/config.json
+  script:
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/ci/rust"
+      --dockerfile "${CI_PROJECT_DIR}/ci/rust/Dockerfile"
+      --destination "$CI_RUST_IMAGE"
+  rules:
+    - changes:
+        - ci/rust/Dockerfile
+    - if: $BUILD_CI_IMAGES == "true"
+
+# ---------------------------------------------------------------------------
 # CHECK
 # ---------------------------------------------------------------------------
 
 cargo-fmt:
   extends: .only-mr
   stage: check
-  image: rust:1.91.0
-  <<: *rust-cache
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
   variables:
     RUSTFLAGS: "-D warnings"
   script:
-    - rustup component add rustfmt
     - cargo fmt --all -- --check
 
 cargo-clippy:
   extends: .only-mr
   stage: check
-  image: rust:1.91.0
-  <<: *rust-cache
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
   variables:
     RUSTFLAGS: "-D warnings"
   script:
-    - rustup component add clippy
     - cargo clippy --workspace --all-targets -- -D warnings
 
 cargo-audit:
   extends: .only-mr
   stage: check
-  image: rust:1.91.0
-  <<: *rust-cache
-  before_script:
-    - export PATH="${CI_PROJECT_DIR}/.cargo/bin:$PATH"
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
   script:
-    - cargo install cargo-audit --locked
     - cargo audit
   allow_failure: false
 
@@ -101,22 +136,20 @@ cargo-audit:
 unit-tests:
   extends: .only-mr
   stage: test
-  image: rust:1.91.0
-  <<: *rust-cache
-  needs:
-    - cargo-clippy
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
+  needs: []
   variables:
     RUSTFLAGS: "-D warnings"
   script:
-    - cargo test --workspace
+    - cargo nextest run --workspace
 
 doc-tests:
   extends: .only-mr
   stage: test
-  image: rust:1.91.0
-  <<: *rust-cache
-  needs:
-    - cargo-clippy
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
+  needs: []
   variables:
     RUSTFLAGS: "-D warnings"
   script:
@@ -125,21 +158,17 @@ doc-tests:
 coverage:
   extends: .only-mr
   stage: test
-  image: rust:1.91.0
-  <<: *rust-cache
-  needs:
-    - cargo-clippy
-  before_script:
-    - export PATH="${CI_PROJECT_DIR}/.cargo/bin:$PATH"
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-debug
+  needs: []
   script:
-    - cargo install cargo-tarpaulin --locked
-    - cargo tarpaulin --workspace --exclude mailcraft-derive --ignore-tests --out xml --output-dir coverage/
-  coverage: '/(\d+\.\d+)% coverage/'
+    - cargo llvm-cov nextest --workspace --exclude mailcraft-derive --cobertura --output-path coverage.xml
+  coverage: '/TOTAL.*\s(\d+\.\d+)%/'
   artifacts:
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: coverage/cobertura.xml
+        path: coverage.xml
 
 # ---------------------------------------------------------------------------
 # BUILD
@@ -147,8 +176,8 @@ coverage:
 
 build-release:
   stage: build
-  image: rust:1.91.0
-  <<: *rust-cache
+  image: $CI_RUST_IMAGE
+  <<: *rust-cache-release
   script:
     - cargo build --workspace --release
   rules:
@@ -161,11 +190,12 @@ build-release:
 release-plz-update:
   stage: release
   image: rust:1.91.0
-  <<: *rust-cache
+  <<: *rust-cache-release
   needs:
     - build-release
   variables:
     GIT_DEPTH: 0
+    RUSTC_WRAPPER: ""
   before_script:
     - *install-release-plz
   script:
@@ -195,12 +225,13 @@ release-plz-update:
 release-plz-release:
   stage: release
   image: rust:1.91.0
-  <<: *rust-cache
+  <<: *rust-cache-release
   needs:
     - job: build-release
       optional: true
   variables:
     GIT_DEPTH: 0
+    RUSTC_WRAPPER: ""
   before_script:
     - *install-release-plz
   script:
