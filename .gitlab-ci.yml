@@ -32,7 +32,11 @@ variables:
   CARGO_NET_RETRY: "5"
   FF_USE_FASTZIP: "1"
   CACHE_COMPRESSION_LEVEL: "fastest"
-  CI_RUST_IMAGE: "${CI_REGISTRY_IMAGE}/ci-rust:rust-1.91.0"
+  # Bump the -vN suffix whenever the image must be republished: tags are never
+  # overwritten, because the runner node keeps the old image cached under the same
+  # tag (pull policy IfNotPresent). rust-1.91.0 was an arm64-only image built on
+  # the macbook runner and fails with "exec format error" on the amd64 runner.
+  CI_RUST_IMAGE: "${CI_REGISTRY_IMAGE}/ci-rust:rust-1.91.0-v2"
   RUSTC_WRAPPER: sccache
   SCCACHE_DIR: "${CI_PROJECT_DIR}/.sccache"
   SCCACHE_CACHE_SIZE: "1G"
@@ -78,6 +82,11 @@ variables:
 # BUILD IMAGES
 # ---------------------------------------------------------------------------
 
+# Kaniko builds for the platform of the runner that picks the job. The jobs
+# using this image run on amd64 (homelab ryzen1 runner), so the platform is
+# forced: on an arm64 runner the build either emulates amd64 or fails, it never
+# publishes an arm64 image again. .gitlab-ci.yml is watched so that bumping the
+# CI_RUST_IMAGE tag publishes the new tag.
 build-ci-images:
   stage: build-images
   image:
@@ -91,9 +100,11 @@ build-ci-images:
       --context "${CI_PROJECT_DIR}/ci/rust"
       --dockerfile "${CI_PROJECT_DIR}/ci/rust/Dockerfile"
       --destination "$CI_RUST_IMAGE"
+      --custom-platform=linux/amd64
   rules:
     - changes:
         - ci/rust/Dockerfile
+        - .gitlab-ci.yml
     - if: $BUILD_CI_IMAGES == "true"
 
 # ---------------------------------------------------------------------------
@@ -133,12 +144,18 @@ cargo-audit:
 # TEST
 # ---------------------------------------------------------------------------
 
+# Tests start without waiting for the check stage, but must wait for
+# build-ci-images when it runs: otherwise a new CI_RUST_IMAGE tag is pulled
+# before it is published.
+
 unit-tests:
   extends: .only-mr
   stage: test
   image: $CI_RUST_IMAGE
   <<: *rust-cache-debug
-  needs: []
+  needs:
+    - job: build-ci-images
+      optional: true
   variables:
     RUSTFLAGS: "-D warnings"
   script:
@@ -149,7 +166,9 @@ doc-tests:
   stage: test
   image: $CI_RUST_IMAGE
   <<: *rust-cache-debug
-  needs: []
+  needs:
+    - job: build-ci-images
+      optional: true
   variables:
     RUSTFLAGS: "-D warnings"
   script:
@@ -160,7 +179,9 @@ coverage:
   stage: test
   image: $CI_RUST_IMAGE
   <<: *rust-cache-debug
-  needs: []
+  needs:
+    - job: build-ci-images
+      optional: true
   script:
     - cargo llvm-cov nextest --workspace --exclude mailcraft-derive --cobertura --output-path coverage.xml
   coverage: '/TOTAL.*\s(\d+\.\d+)%/'
