@@ -1,3 +1,8 @@
+#![doc(
+    html_logo_url = "https://gitlab.com/ThomasTartrau/mailcraft/-/raw/main/assets/logo/mailcraft-symbol.svg",
+    html_favicon_url = "https://gitlab.com/ThomasTartrau/mailcraft/-/raw/main/assets/logo/mailcraft-favicon.ico"
+)]
+
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::quote;

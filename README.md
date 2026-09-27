@@ -1,14 +1,10 @@
 <div align="center">
 
-```text
-                 _ _                 __ _
-  _ __ ___   __ _(_) | ___ _ __ __ _ / _| |_
- | '_ ` _ \ / _` | | |/ __| '__/ _` | |_| __|
- | | | | | | (_| | | | (__| | | (_| |  _| |_
- |_| |_| |_|\__,_|_|_|\___|_|  \__,_|_|  \__|
-```
-
-# mailcraft
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/mailcraft-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo/mailcraft-logo-light.svg">
+  <img alt="mailcraft" src="assets/logo/mailcraft-banner.png" width="560">
+</picture>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)

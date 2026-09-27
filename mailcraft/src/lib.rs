@@ -33,6 +33,10 @@
 //! println!("HTML: {}", rendered.html);
 //! println!("Text: {}", rendered.text);
 //! ```
+#![doc(
+    html_logo_url = "https://gitlab.com/ThomasTartrau/mailcraft/-/raw/main/assets/logo/mailcraft-symbol.svg",
+    html_favicon_url = "https://gitlab.com/ThomasTartrau/mailcraft/-/raw/main/assets/logo/mailcraft-favicon.ico"
+)]
 
 mod email;
 mod engine;
