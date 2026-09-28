@@ -63,6 +63,19 @@ variables:
       - .cargo/git/db/
       - .sccache/
 
+# release-plz jobs compile nothing: they only need the cargo registry, and
+# pulling without pushing keeps them from re-uploading the release cache.
+.rust-cache-release-pull: &rust-cache-release-pull
+  cache:
+    key: rust-release-${CI_COMMIT_REF_SLUG}
+    fallback_keys:
+      - rust-release-${CI_DEFAULT_BRANCH}
+    paths:
+      - .cargo/registry/cache/
+      - .cargo/registry/index/
+      - .cargo/git/db/
+    policy: pull
+
 .install-release-plz: &install-release-plz
   - mkdir -p "${CI_PROJECT_DIR}/.cargo/bin"
   - curl -sSfL "https://github.com/release-plz/release-plz/releases/download/release-plz-v${RELEASE_PLZ_VERSION}/release-plz-x86_64-unknown-linux-musl.tar.gz" | tar -xz -C "${CI_PROJECT_DIR}/.cargo/bin" release-plz
@@ -211,7 +224,7 @@ build-release:
 release-plz-update:
   stage: release
   image: rust:1.91.0
-  <<: *rust-cache-release
+  <<: *rust-cache-release-pull
   needs:
     - build-release
   variables:
@@ -246,7 +259,7 @@ release-plz-update:
 release-plz-release:
   stage: release
   image: rust:1.91.0
-  <<: *rust-cache-release
+  <<: *rust-cache-release-pull
   needs:
     - job: build-release
       optional: true
